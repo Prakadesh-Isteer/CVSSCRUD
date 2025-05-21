@@ -8,6 +8,10 @@ import org.springframework.jdbc.BadSqlGrammarException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
+import com.example.isteer.dto.ErrorMessageDto;
+import com.example.isteer.enums.CVSSEnum;
+import com.example.isteer.exception.BussinessException;
+
 @ControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
@@ -29,4 +33,18 @@ public class GlobalExceptionHandler {
         logger.error("Unexpected error: {}", ex.getMessage());
         return new ResponseEntity<>("An unexpected error occurred", HttpStatus.INTERNAL_SERVER_ERROR);
     }
+    
+    @ExceptionHandler(BussinessException.class)
+    public ResponseEntity<ErrorMessageDto> handleBusinessException(BussinessException ex) {
+    	CVSSEnum error = ex.getError();
+		logger.error("Business error: {}", ex.getMessage());
+		ErrorMessageDto errorMessage = new ErrorMessageDto(error.getStatusCode(), error.getStatusMessage());
+		return new ResponseEntity<>(errorMessage, HttpStatus.BAD_REQUEST);
+	}
+	
+	@ExceptionHandler(NullPointerException.class)
+	public ResponseEntity<String> handleNullPointerException(NullPointerException ex) {
+		logger.error("Null pointer error: {}", ex.getMessage());
+		return new ResponseEntity<>("Null pointer error occurred", HttpStatus.INTERNAL_SERVER_ERROR);
+}
 }

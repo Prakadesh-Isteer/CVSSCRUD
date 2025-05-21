@@ -12,7 +12,7 @@
 	<artifactId>CvssCRUD</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>CvssCRUD</name>
-	<description>Demo project for Spring Boot on CVSS CRUD</description>
+	<description>Demo project for Spring Boot on CVSS CRUD</description>   
 	<url/>
 	<licenses>
 		<license/>
