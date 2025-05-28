@@ -1,32 +1,33 @@
 package com.example.isteer.repository;
 
 import com.example.isteer.entity.Dependency;
-
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.List;
+import java.util.UUID;
 
 @Repository
 public class DependencyRepository {
+    private final NamedParameterJdbcTemplate jdbcTemplate;
 
-   @Autowired
-   NamedParameterJdbcTemplate jdbcTemplate;  // ✅ NamedParameterJdbcTemplate retained
+    public DependencyRepository(NamedParameterJdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     public int save(Dependency dependency) {
-        String sql = "INSERT INTO dependencies (id, application_id, name, version, group_id, artifact_id, created_at) " +
-                     "VALUES (:id, :applicationId, :name, :version, :groupId, :artifactId, :createdAt)";
+        String sql = "INSERT INTO dependencies (uuid, application_uuid, name, version, group_id, artifact_id, created_at) " +
+                     "VALUES (:uuid, :applicationId, :name, :version, :groupId, :artifactId, :createdAt)";
 
-        dependency.setId(UUID.randomUUID().toString());
+        dependency.setUuid(UUID.randomUUID().toString());
 
-        SqlParameterSource params = new MapSqlParameterSource()
-                .addValue("id", dependency.getId())
-                .addValue("applicationId", dependency.getApplicationId())
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("uuid", dependency.getUuid())
+                .addValue("applicationId", dependency.getApplicationUuid())
                 .addValue("name", dependency.getName())
                 .addValue("version", dependency.getVersion())
                 .addValue("groupId", dependency.getGroupId())
@@ -34,53 +35,77 @@ public class DependencyRepository {
                 .addValue("createdAt", dependency.getCreatedAt());
 
        return jdbcTemplate.update(sql, params);
- 
+       
     }
 
-    public List<Dependency> findAll() {
-        String sql = "SELECT id, application_id, name, version, group_id, artifact_id, created_at, updated_at, status FROM dependencies where status = 'ACTIVE'";
-        return jdbcTemplate.query(sql, (rs, rowNum) -> mapRowToDependency(rs));
+    public List<Dependency> findAll(String applicationId) {
+        String sql;
+        MapSqlParameterSource params = new MapSqlParameterSource();
+
+        if (applicationId == null) {
+            sql = "SELECT id, uuid, application_uuid, name, version, group_id, artifact_id, status, created_at, updated_at " +
+                  "FROM dependencies WHERE status = 1";
+        } else {
+            sql = "SELECT id, uuid, application_uuid, name, version, group_id, artifact_id, status, created_at, updated_at " +
+                  "FROM dependencies WHERE application_uuid = :applicationId AND status = 1";
+            params.addValue("applicationId", applicationId);
+        }
+
+        return jdbcTemplate.query(sql, params, this::mapRowToDependency);
     }
 
-    public Dependency findById(String id) {
-        String sql = "SELECT * FROM dependencies WHERE id = :id";
-        Map<String, Object> params = Collections.singletonMap("id", id);
-        List<Dependency> result = jdbcTemplate.query(sql, params, (rs, rowNum) -> mapRowToDependency(rs));
-        return result.isEmpty() ? null : result.get(0);
+    public Dependency findByUuid(String uuid) {
+        String sql = "SELECT id, uuid, application_uuid, name, version, group_id, artifact_id, status, created_at, updated_at " +
+                     "FROM dependencies WHERE uuid = :uuid AND status = 1";
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("uuid", uuid);
+
+        try {
+            return jdbcTemplate.queryForObject(sql, params, this::mapRowToDependency);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
 
-    public int update(String id, Dependency dependency) {
-        String sql = "UPDATE dependencies SET application_id = :applicationId, name = :name, version = :version, " +
-                     "group_id = :groupId, artifact_id = :artifactId, updated_at = :updatedAt WHERE id = :id";
+    public int update(String uuid, Dependency dependency) {
+        String sql = "UPDATE dependencies SET name = :name, version = :version, " +
+                     "group_id = :groupId, artifact_id = :artifactId, updated_at = :updatedAt " +
+                     "WHERE uuid = :uuid";
 
-        SqlParameterSource params = new MapSqlParameterSource()
-                .addValue("applicationId", dependency.getApplicationId())
+        MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("name", dependency.getName())
                 .addValue("version", dependency.getVersion())
                 .addValue("groupId", dependency.getGroupId())
                 .addValue("artifactId", dependency.getArtifactId())
-                .addValue("id", id)
-                 .addValue("updatedAt", dependency.getUpdatedAt());
+                .addValue("updatedAt", dependency.getUpdatedAt())
+                .addValue("uuid", uuid);
+
         return jdbcTemplate.update(sql, params);
     }
 
-    public int delete(String id) {
-        String sql = "UPDATE dependencies SET updated_at = CURRENT_TIMESTAMP WHERE id = :id AND status = 'ACTIVE'";
-        Map<String, Object> params = Collections.singletonMap("id", id);
+    public int softDelete(String uuid) {
+        String sql = "UPDATE dependencies SET status = 0, updated_at = CURRENT_TIMESTAMP WHERE uuid = :uuid";
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("uuid", uuid);
+
         return jdbcTemplate.update(sql, params);
     }
 
-    private Dependency mapRowToDependency(ResultSet rs) throws SQLException {
+    private Dependency mapRowToDependency(ResultSet rs, int rowNum) throws SQLException {
         Dependency dependency = new Dependency();
-        dependency.setId(rs.getString("id"));
-        dependency.setApplicationId(rs.getString("application_id"));
+        dependency.setId(rs.getLong("id"));
+        dependency.setUuid(rs.getString("uuid"));
+        dependency.setApplicationUuid(rs.getString("application_uuid"));
         dependency.setName(rs.getString("name"));
         dependency.setVersion(rs.getString("version"));
         dependency.setGroupId(rs.getString("group_id"));
         dependency.setArtifactId(rs.getString("artifact_id"));
+        dependency.setStatus(rs.getByte("status"));
         dependency.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
-        dependency.setUpdatedAt(rs.getTimestamp("updated_at") != null ? rs.getTimestamp("updated_at").toLocalDateTime() : null);
-       dependency.setStatus(rs.getString("status"));
+        dependency.setUpdatedAt(rs.getTimestamp("updated_at") != null ?
+                rs.getTimestamp("updated_at").toLocalDateTime() : null);
         return dependency;
     }
 }

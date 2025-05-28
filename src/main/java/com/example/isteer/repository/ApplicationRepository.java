@@ -1,91 +1,105 @@
 package com.example.isteer.repository;
 
 import com.example.isteer.entity.Applications;
-
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.List;
+import java.util.UUID;
 
 @Repository
 public class ApplicationRepository {
+    private final NamedParameterJdbcTemplate jdbcTemplate;
 
-	@Autowired
-	NamedParameterJdbcTemplate jdbcTemplate;  // ✅ NamedParameterJdbcTemplate retained
+    public ApplicationRepository(NamedParameterJdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
-    public Applications save(Applications application) {
-        String sql = "INSERT INTO applications (id, computer_id, name, version, vendor, install_date, created_at) " +
-                     "VALUES (:id, :computerId, :name, :version, :vendor, :installDate, :createdAt)";
+    public int save(Applications application) {
+        String sql = "INSERT INTO applications (uuid, computer_uuid, name, version, vendor, install_date, created_at) " +
+                     "VALUES (:uuid, :computerId, :name, :version, :vendor, :installDate,  :createdAt)";
+        application.setUuid(UUID.randomUUID().toString());
 
-        application.setId(UUID.randomUUID().toString());
-
-        SqlParameterSource params = new MapSqlParameterSource()
-                .addValue("id", application.getId())
-                .addValue("computerId", application.getComputerId())
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("uuid", application.getUuid())
+                .addValue("computerId", application.getComputerUuid())
                 .addValue("name", application.getName())
                 .addValue("version", application.getVersion())
                 .addValue("vendor", application.getVendor())
                 .addValue("installDate", application.getInstallDate())
+                .addValue("status", application.getStatus())
                 .addValue("createdAt", application.getCreatedAt());
 
         jdbcTemplate.update(sql, params);
-        return application;
+        return  1; // Assuming the insert is successful, return 1
     }
 
-    public List<Applications> findAll() {
-        String sql = "SELECT id, computer_id, name, version, vendor, install_date, created_at, updated_at, status FROM applications where status = 'ACTIVE'";
-        return jdbcTemplate.query(sql, (rs, rowNum) -> mapRowToApplication(rs));
+    public List<Applications> findAll(String uuid) {
+        String sql;
+        MapSqlParameterSource params = new MapSqlParameterSource();
+
+        if (uuid == null) {
+            sql = "SELECT id, uuid, computer_uuid, name, version, vendor, install_date,status, created_at, updated_at FROM applications WHERE status = 1";
+        } else {
+            sql = "SELECT id, uuid, computer_uuid, name, version, vendor, install_date,status, created_at, updated_at FROM applications WHERE computer_uuid = :computerId AND status = 1";
+            params.addValue("computerId", uuid);
+        }
+
+        return jdbcTemplate.query(sql, params, this::mapRowToApplication);
     }
 
-    public Applications findById(String id) {
-        String sql = "SELECT * FROM applications WHERE id = :id AND status = 'ACTIVE'";
-        Map<String, Object> params = Collections.singletonMap("id", id);
-        List<Applications> result = jdbcTemplate.query(sql, params, (rs, rowNum) -> mapRowToApplication(rs));
-        return result.isEmpty() ? null : result.get(0);
+    public Applications findByUuid(String uuid) {
+        String sql = "SELECT id, uuid, computer_uuid, name, version, vendor, install_date,status, created_at, updated_at FROM applications WHERE uuid = :uuid AND status = 1";
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("uuid", uuid);
+
+        try {
+            return jdbcTemplate.queryForObject(sql, params, this::mapRowToApplication);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
 
-    public int update(String id, Applications application) {
-        String sql = "UPDATE applications SET  name = :name, version = :version, " +
-                     "vendor = :vendor,updated_at = :updatedAt, install_date = :installDate WHERE id = :id";
+    public int update(String uuid, Applications application) {
+        String sql = "UPDATE applications SET name = :name, version = :version, " +
+                     "vendor = :vendor, install_date = :installDate, updated_at = :updatedAt " +
+                     "WHERE uuid = :uuid";
 
-        SqlParameterSource params = new MapSqlParameterSource()
-               
+        MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("name", application.getName())
                 .addValue("version", application.getVersion())
                 .addValue("vendor", application.getVendor())
                 .addValue("installDate", application.getInstallDate())
                 .addValue("updatedAt", application.getUpdatedAt())
-                .addValue("id", id);
+                .addValue("uuid", uuid);
 
         return jdbcTemplate.update(sql, params);
     }
 
-    public int delete(String id) {
-        String sql = "UPDATE applications SET status = 'DELETED', updated_at = CURRENT_TIMESTAMP WHERE id = :id" +
-					 " AND status = 'ACTIVE'";
-        Map<String, Object> params = Collections.singletonMap("id", id);
+    public int softDelete(String uuid) {
+        String sql = "UPDATE applications SET status = 0, updated_at = CURRENT_TIMESTAMP WHERE uuid = :uuid";
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("uuid", uuid);
+
         return jdbcTemplate.update(sql, params);
     }
 
-    private Applications mapRowToApplication(ResultSet rs) throws SQLException {
+    private Applications mapRowToApplication(ResultSet rs, int rowNum) throws SQLException {
         Applications application = new Applications();
-        application.setId(rs.getString("id"));
-        application.setComputerId(rs.getString("computer_id"));
+        application.setId(rs.getLong("id"));
+        application.setUuid(rs.getString("uuid"));
+        application.setComputerUuid(rs.getString("computer_uuid"));
         application.setName(rs.getString("name"));
         application.setVersion(rs.getString("version"));
         application.setVendor(rs.getString("vendor"));
-        application.setInstallDate(rs.getDate("install_date") != null ?
+        application.setInstallDate(rs.getDate("install_date") != null ? 
                 rs.getDate("install_date").toLocalDate() : null);
-        application.setStatus(rs.getString("status"));
+        application.setStatus(rs.getByte("status"));
         application.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
-        if (rs.getTimestamp("updated_at") != null) {
-			application.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
-		}
+        application.setUpdatedAt(rs.getTimestamp("updated_at") != null ? 
+                rs.getTimestamp("updated_at").toLocalDateTime() : null);
         return application;
     }
 }

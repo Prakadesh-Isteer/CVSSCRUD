@@ -1,87 +1,93 @@
 package com.example.isteer.service;
 
 import com.example.isteer.entity.Dependency;
+import com.example.isteer.entity.Vulnerability;
 import com.example.isteer.repository.ApplicationRepository;
 import com.example.isteer.repository.DependencyRepository;
+import com.example.isteer.repository.VulnerabilityRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class DependencyService {
-	private static final Logger logger = LoggerFactory.getLogger(DependencyService.class);
+    private static final Logger logger = LoggerFactory.getLogger(DependencyService.class);
 
-	private final DependencyRepository dependencyRepository;
-	private final ApplicationRepository applicationRepository;
+    private final DependencyRepository dependencyRepository;
+    private final ApplicationRepository applicationRepository;
+    private final VulnerabilityRepository vulnerabilityRepository;
 
-	public DependencyService(DependencyRepository dependencyRepository, ApplicationRepository applicationRepository) {
-		this.dependencyRepository = dependencyRepository;
-		this.applicationRepository = applicationRepository;
-	}
+    public DependencyService(DependencyRepository dependencyRepository, ApplicationRepository applicationRepository,
+                             VulnerabilityRepository vulnerabilityRepository) {
+        this.dependencyRepository = dependencyRepository;
+        this.applicationRepository = applicationRepository;
+        this.vulnerabilityRepository = vulnerabilityRepository;
+    }
 
-	public int createDependency(String applicationId, Dependency dependency) {
-
-		 dependency.setApplicationId(applicationId);
-		if (applicationRepository.findById(applicationId) == null) {
-			return -3; // Application ID not found
+    public int createDependency(String applicationId, Dependency dependency) {
+        
+    	if (applicationId == null || applicationId.trim().isEmpty()) {
+			return -2; // Application ID cannot be empty
 		}
-		if (dependency.getApplicationId() == null || dependency.getApplicationId().trim().isEmpty()) {
-			logger.error("Application ID is required");
-			return -2; // Application ID is required
+    	if(applicationRepository.findByUuid(applicationId) == null) {
+    		
+    					return -1; // Application does not exist
+    	}
+        applicationRepository.findByUuid(applicationId); // Check application exists
+        dependency.setApplicationUuid(applicationId);
+        dependency.setStatus((byte) 1);
+        dependency.setCreatedAt(LocalDateTime.now());
+        logger.info("Creating dependency: {}", dependency.getName());
+        return dependencyRepository.save(dependency);
+    }
+
+    public List<Dependency> getAllDependencies(String applicationUuid) {
+        logger.info("Fetching dependencies for applicationId: {}", applicationUuid);
+        if (applicationUuid != null) {
+            applicationRepository.findByUuid(applicationUuid); // Check application exists
+        }
+        List<Dependency> dependencies = dependencyRepository.findAll(applicationUuid);
+        List<Vulnerability> vulnerabilities = vulnerabilityRepository.findAll(null);
+
+        Map<String, List<Vulnerability>> vulnMap = vulnerabilities.stream()
+                .collect(Collectors.groupingBy(Vulnerability::getDependencyUuid));
+
+        dependencies.forEach(dep -> dep.setVulnerabilities(vulnMap.getOrDefault(dep.getUuid(), Collections.emptyList())));
+
+        return dependencies;
+    }
+
+    public int updateDependency(String uuid, Dependency dependency) {
+        if (uuid == null || uuid.trim().isEmpty()) {
+			return -2; // ID cannot be empty
 		}
+        if(dependencyRepository.findByUuid(uuid) == null) {
+        	return -1; // Dependency not found
+        }
+        dependency.setStatus((byte) 1);
+        dependencyRepository.findByUuid(uuid); // Check existence
+        logger.info("Updating dependency with UUID: {}", uuid);
+       return dependencyRepository.update(uuid, dependency);
+       
+    }
 
-		logger.error("Application ID not found: {}", applicationId);
-
-		if (dependency.getName() == null || dependency.getName().trim().isEmpty()) {
-			logger.error("Dependency name is required");
-			return -1; // Dependency name is required
+    public int softDeleteDependency(String uuid) {
+    	if (uuid == null || uuid.trim().isEmpty()) {
+			return -2; // ID cannot be empty
 		}
-		dependency.setApplicationId(applicationId);
-		dependency.setCreatedAt(LocalDateTime.now());
-		logger.info("Creating dependency: {}", dependency.getName());
-		return dependencyRepository.save(dependency);
-	}
-
-	public List<Dependency> getAllDependencies() {
-		logger.info("Fetching all dependencies");
-		return dependencyRepository.findAll();
-	}
-
-	public int updateDependency(String id, Dependency dependency) {
-		validateDependency(dependency);
-		if (dependencyRepository.findById(id) == null) {
-			logger.error("Dependency not found with ID: {}", id);
+         if (dependencyRepository.findByUuid(uuid) == null) {
 			return -1; // Dependency not found
-			// Check existence
 		}
-		dependency.setId(id);
-		dependency.setUpdatedAt(LocalDateTime.now());
-		logger.info("Updating dependency with ID: {}", id);
-		return dependencyRepository.update(id, dependency);
+        logger.info("Soft deleting dependency with UUID: {}", uuid);
+        dependencyRepository.findByUuid(uuid); // Check existence
+        return dependencyRepository.softDelete(uuid);
+    }
 
-	}
-
-	public int deleteDependency(String id) {
-		logger.info("Deleting dependency with ID: {}", id);
-		if (dependencyRepository.findById(id) == null) {
-
-			logger.error("Dependency not found with ID: {}", id);
-			return -1; // Dependency not found
-		}
-		dependencyRepository.delete(id);
-		return 1; // Success
-	}
-
-	private int validateDependency(Dependency dependency) {
-		if (dependency.getName() == null || dependency.getName().trim().isEmpty()) {
-			return -1;
-		}
-		if (dependency.getApplicationId() == null) {
-			return -2;
-		}
-		return 0;
-	}
+    
 }

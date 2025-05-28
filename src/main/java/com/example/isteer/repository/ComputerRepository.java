@@ -1,98 +1,105 @@
 package com.example.isteer.repository;
 
 import com.example.isteer.entity.Computers;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.List;
+import java.util.UUID;
 
 @Repository
 public class ComputerRepository {
 
-    @Autowired
-    NamedParameterJdbcTemplate jdbcTemplate;  // NamedParameterJdbcTemplate retained
+    private final NamedParameterJdbcTemplate jdbcTemplate;
 
-    public Computers save(Computers computer) {
-        String sql = "INSERT INTO computers (id, ip_address, hostname, os_name, os_version, location, created_at, is_active, status) " +
-                     "VALUES (:id, :ipAddress, :hostname, :osName, :osVersion, :location, :createdAt , :isActive, :status)";
-        
-        computer.setId(UUID.randomUUID().toString());
+    public ComputerRepository(NamedParameterJdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
-        SqlParameterSource params = new MapSqlParameterSource()
-                .addValue("id", computer.getId())
+    public int save(Computers computer) {
+        String sql = "INSERT INTO Computers (uuid, ip_address, hostName, os_name, os_version, location, created_at, updated_at) " +
+                     "VALUES (:uuid, :ipAddress, :hostName, :osName, :osVersion, :location, :createdAt, :updatedAt)";
+        computer.setUuid(UUID.randomUUID().toString());
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("uuid", computer.getUuid())
                 .addValue("ipAddress", computer.getIpAddress())
-                .addValue("hostname", computer.getHostname())
+                .addValue("hostName", computer.getHostName())
                 .addValue("osName", computer.getOsName())
                 .addValue("osVersion", computer.getOsVersion())
                 .addValue("location", computer.getLocation())
                 .addValue("createdAt", computer.getCreatedAt())
-                .addValue("isActive", true)
-                .addValue("status", "ACTIVE");
+                .addValue("updatedAt", computer.getUpdatedAt());
 
         jdbcTemplate.update(sql, params);
-        return computer;
+        return 1; // Assuming the insert is successful, return 1
     }
 
     public List<Computers> findAll() {
-        String sql = "SELECT id, ip_address, hostname, os_name, os_version, location, created_at,updated_at, is_active, status  FROM computers where status = 'ACTIVE'";
-        return jdbcTemplate.query(sql, (rs, rowNum) -> maprowTocomputer(rs));
+        String sql = "SELECT id, uuid, ip_address, hostName, os_name, os_version, location, is_active, status, created_at, updated_at FROM Computers WHERE status = 1";
+        return jdbcTemplate.query(sql, new MapSqlParameterSource(), this::mapRowToComputer);
     }
 
-    public Computers findById(String id) {
-        String sql = "SELECT * FROM computers WHERE id = :id AND status = 'ACTIVE'";
-        Map<String, Object> params = Collections.singletonMap("id", id);
-        List<Computers> result = jdbcTemplate.query(sql, params, (rs, rowNum) -> maprowTocomputer(rs));
-        return result.isEmpty() ? null : result.get(0);
+    public Computers findByUuid(String uuid) {
+        String sql = "SELECT id, uuid, ip_address, hostName, os_name, os_version, location, is_active, status, created_at, updated_at FROM Computers WHERE uuid = :uuid AND status = 1 AND is_active = TRUE";
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("uuid", uuid);
+
+        try {
+            return jdbcTemplate.queryForObject(sql, params, this::mapRowToComputer);
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
 
-    public int update(String id, Computers computer) {
-        String sql = "UPDATE computers SET ip_address = :ipAddress, hostname = :hostname, os_name = :osName, " +
-                     "os_version = :osVersion, location = :location, updated_at = :updatedAt WHERE id = :id";
+    public int update(String uuid, Computers computer) {
+        String sql = "UPDATE Computers SET ip_address = :ipAddress, hostName = :hostName, os_name = :osName, " +
+                     "os_version = :osVersion, location = :location, " +
+                     "updated_at = :updatedAt WHERE uuid = :uuid";
 
-        SqlParameterSource params = new MapSqlParameterSource()
+        MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("ipAddress", computer.getIpAddress())
-                .addValue("hostname", computer.getHostname())
+                .addValue("hostName", computer.getHostName())
                 .addValue("osName", computer.getOsName())
                 .addValue("osVersion", computer.getOsVersion())
                 .addValue("location", computer.getLocation())
+                .addValue("isActive", computer.isActive())
+                .addValue("status", computer.getStatus())
                 .addValue("updatedAt", computer.getUpdatedAt())
-                .addValue("id", id);
+                .addValue("uuid", uuid);
 
         return jdbcTemplate.update(sql, params);
     }
 
-    public int delete(String id) {
-    	 String sql = "UPDATE Computers SET status = 'DELETED', updated_at = CURRENT_TIMESTAMP WHERE id = :id AND status = 'ACTIVE'";
-        Map<String, Object> params = Collections.singletonMap("id", id);
-        return jdbcTemplate.update(sql, params);
-    }
-    
-    public int deactivate(String id) {
-        String sql = "UPDATE Computers SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = :id AND status = 'ACTIVE'";
-        Map<String, Object> params = Collections.singletonMap("id", id);
+    public int softDelete(String uuid) {
+        String sql = "UPDATE Computers SET status = 0, updated_at = CURRENT_TIMESTAMP WHERE uuid = :uuid AND status = 1";
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("uuid", uuid);
         return jdbcTemplate.update(sql, params);
     }
 
-    private Computers maprowTocomputer(ResultSet rs) throws SQLException {
+    public int deactivate(String uuid) {
+        String sql = "UPDATE Computers SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE uuid = :uuid AND status = 1 AND is_active = TRUE";
+        MapSqlParameterSource params = new MapSqlParameterSource().addValue("uuid", uuid);
+        return jdbcTemplate.update(sql, params);
+    }
+
+    private Computers mapRowToComputer(ResultSet rs, int rowNum) throws SQLException {
         Computers computer = new Computers();
-        computer.setId(rs.getString("id"));
+        computer.setId(rs.getLong("id"));
+        computer.setUuid(rs.getString("uuid"));
         computer.setIpAddress(rs.getString("ip_address"));
-        computer.setHostname(rs.getString("hostname"));
+        computer.setHostName(rs.getString("hostName"));
         computer.setOsName(rs.getString("os_name"));
         computer.setOsVersion(rs.getString("os_version"));
         computer.setLocation(rs.getString("location"));
         computer.setActive(rs.getBoolean("is_active"));
-        computer.setStatus(rs.getString("status"));
+        computer.setStatus(rs.getByte("status"));
         computer.setCreatedAt(rs.getTimestamp("created_at").toLocalDateTime());
-        if (rs.getTimestamp("updated_at") != null) {
-			computer.setUpdatedAt(rs.getTimestamp("updated_at").toLocalDateTime());
-		}
+        computer.setUpdatedAt(rs.getTimestamp("updated_at") != null ? 
+                rs.getTimestamp("updated_at").toLocalDateTime() : null);
         return computer;
     }
 }
-// This repository class provides methods to interact with the database for CRUD operations on the Computers entity.
