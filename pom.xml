@@ -8,7 +8,7 @@
 		<version>3.4.5</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.example.isteer</groupId>
+	<groupId>com.isteer</groupId>
 	<artifactId>CvssCRUD</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>CvssCRUD</name>
