@@ -1,173 +1,201 @@
 package com.isteer.service;
 
+import java.util.List;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.isteer.entity.Application;
 import com.isteer.entity.Computer;
-import com.isteer.entity.Dependency;
-import com.isteer.entity.Vulnerability;
 import com.isteer.repository.ApplicationRepository;
 import com.isteer.repository.ComputerRepository;
 import com.isteer.repository.DependencyRepository;
 import com.isteer.repository.VulnerabilityRepository;
 
-import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 @Service
 public class ComputerService {
-	private static final Logger logger = LoggerFactory.getLogger(ComputerService.class);
-	private static final Pattern IP_PATTERN = Pattern
-			.compile("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
+    // Logger instance for logging messages during execution
+    private static final Logger logger = LoggerFactory.getLogger(ComputerService.class);
 
-	@Autowired
-	 ComputerRepository computerRepository;
-	@Autowired
-	 ApplicationRepository applicationRepository;
-	@Autowired
-	DependencyRepository dependencyRepository;
-	@Autowired
-	 VulnerabilityRepository vulnerabilityRepository;
+    // Regular expression pattern to validate IP addresses (IPv4 format)
+    private static final Pattern IP_PATTERN = Pattern
+            .compile("^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$");
 
+    // Autowired repositories for performing database operations
+    @Autowired
+    ComputerRepository computerRepository; // Repository for Computer entity
+    @Autowired
+    ApplicationRepository applicationRepository; // Repository for Application entity
+    @Autowired
+    DependencyRepository dependencyRepository; // Repository for Dependency entity
+    @Autowired
+    VulnerabilityRepository vulnerabilityRepository; // Repository for Vulnerability entity
 
+    /**
+     * Creates a new computer record in the database.
+     * Validates the IP address before saving.
+     *
+     * @param computer The computer entity to be saved.
+     * @return Status code indicating success or failure.
+     */
+    public int createMachine(Computer computer) {
+        // Validate IP address format using the defined pattern
+        if (computer.getIpAddress() == null || !IP_PATTERN.matcher(computer.getIpAddress()).matches()) {
+            logger.error("Invalid IP address: {}", computer.getIpAddress()); // Log error for invalid IP
+            return -4; // Return error code for invalid IP address
+        }
+        logger.info("Creating machine with IP: {}", computer.getIpAddress()); // Log the creation process
+        return computerRepository.save(computer); // Save the computer entity to the database
+    }
 
-	public int createMachine(Computer computer) {
-		if (computer.getIpAddress() == null || !IP_PATTERN.matcher(computer.getIpAddress()).matches()) {
-			logger.error("Invalid IP address: {}", computer.getIpAddress());
-			return -4; // Invalid IP address
-		}
-	    computer.setStatus(true); // Set status to active
-		computer.setActive(true);
-		computer.setCreatedAt(LocalDateTime.now());
-		logger.info("Creating machine with IP: {}", computer.getIpAddress());
-		return computerRepository.save(computer);
-	}
+    /**
+     * Fetches all computers from the database without any hierarchy.
+     *
+     * @return List of all computers.
+     */
+    public List<Computer> getAllComputers() {
+        logger.info("Fetching all computers (no hierarchy)"); // Log the fetch operation
+        return computerRepository.findAll(); // Retrieve all computer records from the database
+    }
 
-	public List<Computer> getAllComputers() {
-		logger.info("Fetching all machines");
-		List<Computer> computer = computerRepository.findAll();
-		// Fetch hierarchical data
-		List<Application> application = applicationRepository.findAll(null);
-		List<Dependency> dependencies = dependencyRepository.findAll(null);
-		List<Vulnerability> vulnerabilities = vulnerabilityRepository.findAll(null);
+    /**
+     * Finds a computer by its UUID, including full hierarchy (joined data).
+     *
+     * @param uuid The UUID of the computer.
+     * @return The computer entity or null if not found.
+     */
+    public Computer findComputerByUuid(String uuid) {
+        logger.info("Fetching computer with UUID: {} including full hierarchy (joined).", uuid); // Log the fetch operation
 
-		// Map applications to computers
-		Map<String, List<Application>> appMap = application.stream()
-				.collect(Collectors.groupingBy(Application::getComputerUuid));
-		// Map dependencies to applications
-		Map<String, List<Dependency>> depMap = dependencies.stream()
-				.collect(Collectors.groupingBy(Dependency::getApplicationUuid));
-		// Map vulnerabilities to dependencies
-		Map<String, List<Vulnerability>> vulnMap = vulnerabilities.stream()
-				.collect(Collectors.groupingBy(Vulnerability::getDependencyUuid));
+        // Validate UUID input to ensure it is not null or empty
+        if (uuid == null || uuid.trim().isEmpty()) {
+            logger.warn("UUID is empty. Returning null."); // Log warning for empty UUID
+            return null; // Return null for invalid UUID
+        }
 
-		// Build hierarchy
-		computer.forEach(wrkComputers -> {
-			List<Application> compApps = appMap.getOrDefault(wrkComputers.getUuid(), Collections.emptyList());
-			compApps.forEach(app -> {
-				List<Dependency> appDeps = depMap.getOrDefault(app.getUuid(), Collections.emptyList());
-				appDeps.forEach(
-						dep -> dep.setVulnerabilities(vulnMap.getOrDefault(dep.getUuid(), Collections.emptyList())));
-				app.setDependencies(appDeps);
-			});
-			wrkComputers.setApplications(compApps);
-		});
+        return computerRepository.computerByUuid(uuid); // Fetch computer by UUID from the database
+    }
 
-		return computer;
-	}
-	
-	public Computer findComputerByUuid(String uuid) {
-		logger.info("Fetching machine by UUID: {}", uuid);
-		if (uuid == null || uuid.trim().isEmpty()) {
-			return null; // UUID cannot be empty
-		}
-		logger.info("Fetching machine with UUID: {}", uuid);
-		return computerRepository.computerByUuid(uuid);
-	}
+    /**
+     * Updates an existing computer record based on its UUID.
+     * Validates the UUID and IP address before updating.
+     *
+     * @param uuid The UUID of the computer to be updated.
+     * @param computer The updated computer entity.
+     * @return Status code indicating success or failure.
+     */
+    public int updateMachine(String uuid, Computer computer) {
+        // Validate UUID input to ensure it is not null or empty
+        if (uuid == null || uuid.trim().isEmpty()) {
+            return -3; // Return error code for empty UUID
+        }
+        // Validate IP address format using the defined pattern
+        if (computer.getIpAddress() == null || !IP_PATTERN.matcher(computer.getIpAddress()).matches()) {
+            logger.error("Invalid IP address: {}", computer.getIpAddress()); // Log error for invalid IP
+            return -2; // Return error code for invalid IP address
+        }
+        // Check if the computer exists in the database
+        if (computerRepository.findByUuid(uuid) == null) {
+            return -1; // Return error code for computer not found
+        }
 
-	public int updateMachine(String uuid, Computer computer) {
-		if (uuid == null || uuid.trim().isEmpty()) {
-			return -3; // UUID cannot be empty
-		}
-		if (computer.getIpAddress() == null || !IP_PATTERN.matcher(computer.getIpAddress()).matches()) {
-			logger.error("Invalid IP address: {}", computer.getIpAddress());
-			return -2; // Invalid IP address
-		}
-		if (computerRepository.findByUuid(uuid) == null) {
-			return -1; // Computer not found
-		}
-		computer.setStatus(true); // Set status to active
-		computer.setUpdatedAt(LocalDateTime.now());
-		logger.info("Updating machine with UUID: {}", uuid);
-		computerRepository.findByUuid(uuid); // Check existence
-		computerRepository.update(uuid, computer);
-		return 1; // Assuming update is successful
-	}
+        logger.info("Updating machine with UUID: {}", uuid); // Log the update process
+        int rowsUpdated = computerRepository.update(uuid, computer); // Perform update operation in the database
+        if (rowsUpdated == 0) {
+            logger.warn("No active computer found for UUID: {}", uuid); // Log warning for inactive computer
+            return -5; // Return error code for inactive computer
+        }
+        return 1; // Return success code for update operation
+    }
 
-	public int softDeleteMachine(String uuid) {
-		if (uuid == null || uuid.trim().isEmpty()) {
-			return -2; // UUID cannot be empty
-		}
-		if (computerRepository.findByUuid(uuid) == null) {
-			return -1; // Computer not found
-		}
-		logger.info("Soft deleting machine with UUID: {}", uuid);
-		computerRepository.findByUuid(uuid); // Check existence
-		return computerRepository.softDelete(uuid);
-	}
+    /**
+     * Soft deletes a computer record by marking it inactive.
+     *
+     * @param uuid The UUID of the computer to be soft deleted.
+     * @return Status code indicating success or failure.
+     */
+    public int softDeleteComputer(String uuid) {
+        // Validate UUID input to ensure it is not null or empty
+        if (uuid == null || uuid.trim().isEmpty()) {
+            return -2; // Return error code for empty UUID
+        }
+        // Check if the computer exists in the database
+        if (computerRepository.findByUuid(uuid) == null) {
+            return -1; // Return error code for computer not found
+        }
+        logger.info("Soft deleting machine with UUID: {}", uuid); // Log the soft delete process
+        return computerRepository.softDelete(uuid); // Perform soft delete operation in the database
+    }
 
-	public int deactivateMachine(String uuid) {
-		if (uuid == null || uuid.trim().isEmpty()) {
-			return -2; // UUID cannot be empty
-		}
-		if (computerRepository.findByUuid(uuid) == null) {
-			return -1; // Computer not found
-		}
-		logger.info("Deactivating machine with UUID: {}", uuid);
-		computerRepository.findByUuid(uuid); // Check existence
-		return computerRepository.deactivate(uuid);
-	}
-	
-	
-	public int activateMachine(String uuid) {
-	    if (uuid == null || uuid.trim().isEmpty()) {
-	        return -2;
-	    }
+    /**
+     * Deactivates a computer record by marking it inactive.
+     *
+     * @param uuid The UUID of the computer to be deactivated.
+     * @return Status code indicating success or failure.
+     */
+    public int deactivateComputers(String uuid) {
+        // Validate UUID input to ensure it is not null or empty
+        if (uuid == null || uuid.trim().isEmpty()) {
+            return -2; // Return error code for empty UUID
+        }
+        // Check if the computer exists in the database
+        if (computerRepository.findByUuid(uuid) == null) {
+            return -1; // Return error code for computer not found
+        }
+        logger.info("Deactivating machine with UUID: {}", uuid); // Log the deactivation process
+        return computerRepository.deactivate(uuid); // Perform deactivation operation in the database
+    }
 
-	    int updatedRows = computerRepository.activateComputer(uuid);
+    /**
+     * Activates a computer record by marking it active.
+     *
+     * @param uuid The UUID of the computer to be activated.
+     * @return Status code indicating success or failure.
+     */
+    public int activateComputers(String uuid) {
+        // Validate UUID input to ensure it is not null or empty
+        if (uuid == null || uuid.trim().isEmpty()) {
+            return -2; // Return error code for empty UUID
+        }
 
-	    if (updatedRows > 0) {
-	        return 1;
-	    }
+        int updatedRows = computerRepository.activateComputer(uuid); // Perform activation operation in the database
 
-	    // Check if computer exists
-	    if (computerRepository.findByUuid(uuid) == null) {
-	        return -1;
-	    }
+        if (updatedRows > 0) {
+            return 1; // Return success code for activation
+        }
 
-	    return 0; // Already active
-	}
+        // Check if the computer exists in the database
+        if (computerRepository.findByUuid(uuid) == null) {
+            return -1; // Return error code for computer not found
+        }
 
+        return 0; // Return code indicating the computer is already active
+    }
 
-	public List<Computer> getActiveComputers() {
-		logger.info("Fetching all active machines");
-		return computerRepository.findAll().stream()
-				.filter(Computer::isActive)
-				.collect(Collectors.toList());
-	}
+    /**
+     * Fetches all active computers from the database.
+     *
+     * @return List of active computers.
+     */
+    public List<Computer> getActiveComputers() {
+        logger.info("Fetching all active machines"); // Log the fetch operation
+        return computerRepository.findAll().stream()
+                .filter(Computer::isActive) // Filter active computers using the `isActive` method
+                .collect(Collectors.toList()); // Collect the filtered results into a list
+    }
 
-	public List<Computer> getInactiveComputers() {
-		logger.info("Fetching all inactive machines");
-		return computerRepository.findAll().stream()
-				.filter(computer -> !computer.isActive())
-				.collect(Collectors.toList());
-	}
-
+    /**
+     * Fetches all inactive computers from the database.
+     *
+     * @return List of inactive computers.
+     */
+    public List<Computer> getInactiveComputers() {
+        logger.info("Fetching all inactive machines"); // Log the fetch operation
+        return computerRepository.findAll().stream()
+                .filter(computer -> !computer.isActive()) // Filter inactive computers using the negation of `isActive`
+                .collect(Collectors.toList()); // Collect the filtered results into a list
+    }
 }

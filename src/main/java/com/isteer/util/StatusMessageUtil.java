@@ -1,21 +1,27 @@
 package com.isteer.util;
 
-import org.springframework.context.MessageSource;
-import org.springframework.context.i18n.LocaleContextHolder;
-import org.springframework.stereotype.Component;
+import org.springframework.context.MessageSource; // Importing Spring's MessageSource to handle internationalized messages.
+import org.springframework.context.i18n.LocaleContextHolder; // Importing LocaleContextHolder to retrieve the current locale.
+import org.springframework.stereotype.Component; // Importing Component annotation to mark this class as a Spring-managed bean.
 
-import com.isteer.enums.CVSSEnum;
+import com.isteer.enums.CVSSEnum; // Importing CVSSEnum, which likely contains enumerations for message keys.
 
-@Component
+@Component // Marks this class as a Spring component, enabling it to be auto-detected and managed by the Spring container.
 public class StatusMessageUtil {
 
-	 private static MessageSource messageSource;
+    // Static variable to hold the MessageSource instance for retrieving messages.
+    private static MessageSource messageSource;
 
-	    public StatusMessageUtil(MessageSource messageSource) {
-	        StatusMessageUtil.messageSource = messageSource;
-	    }
+    // Constructor to inject the MessageSource dependency into the class.
+    public StatusMessageUtil(MessageSource messageSource) {
+        // Assigning the injected MessageSource instance to the static variable.
+        StatusMessageUtil.messageSource = messageSource;
+    }
 
-	    public static String getMessage(CVSSEnum enumVal) {
-	        return messageSource.getMessage(enumVal.getMessageKey(), null, LocaleContextHolder.getLocale());
-	    }
+    // Static method to retrieve a message based on the provided CVSSEnum value.
+    public static String getMessage(CVSSEnum enumVal) {
+        // Using the MessageSource to fetch the message corresponding to the key from the CVSSEnum.
+        // LocaleContextHolder.getLocale() ensures the message is fetched for the current locale.
+        return messageSource.getMessage(enumVal.getMessageKey(), null, LocaleContextHolder.getLocale());
+    }
 }

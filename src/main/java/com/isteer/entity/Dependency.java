@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotBlank;
 public class Dependency {
     private Long id;
     private String uuid;
+    @JsonIgnore
     private String applicationUuid;
     @NotBlank(message = "Dependency name cannot be blank")
     private String name;
